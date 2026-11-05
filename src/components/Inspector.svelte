@@ -112,7 +112,11 @@
         {#if mix.id === 'A'}
           <p class="hint">{S.rt.live ? 'Plays on your Windows default output. Change it in the device menu at the top.' : 'In the Windows app this is your default output device.'}</p>
         {:else}
-          <p class="hint">Mix B is the stream mix. In this test version it is a preview: sending it to OBS as a separate device needs a virtual audio driver, which is not built yet.</p>
+          <p class="hint">Mix B is the stream mix. Daelij MiX records each app separately and plays this mix on your stream device — best a virtual cable (free VB-Cable). In OBS add "Audio Input Capture" and pick "CABLE Output".</p>
+          {#if S.rt.live}
+            <p class="hint">Now: {S.rt.stream.state === 'active' || S.rt.stream.state === 'fallback' ? `playing on ${S.rt.stream.device} · ${S.rt.stream.captures} apps` : S.rt.stream.state.replace('_', ' ')}{S.rt.stream.error ? ' · ' + S.rt.stream.error : ''}</p>
+          {/if}
+          <p class="hint">Pick and order stream devices in the device menu at the top right.</p>
         {/if}
       </section>
     {/if}

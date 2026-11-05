@@ -70,6 +70,8 @@
     {:else}<SettingsView />{/if}
   </main>
 
+  {#if S.rt.toast}<div class="toast" role="status">{S.rt.toast}</div>{/if}
+
   <footer class="status">
     <span>{S.settings.sr / 1000} kHz</span><span>{S.settings.buf} smp</span><span>{latency} ms</span>
     <span>Remote clients: 0</span>
@@ -98,6 +100,7 @@
   .glabel span { font-weight: 600; letter-spacing: .2px; color: var(--muted); }
   .strips { display: flex; gap: 8px; flex: 1; min-height: 0; }
   .mixer :global(.insp) { height: 100%; }
+  .toast { position: fixed; left: 50%; bottom: 48px; transform: translateX(-50%); z-index: 40; background: #2a1d1f; border: 1px solid rgba(255,93,93,.5); color: #ffd0d0; padding: 9px 14px; border-radius: 10px; font-size: 12.5px; box-shadow: 0 10px 30px rgba(0,0,0,.4); max-width: 90vw; }
   .status { display: flex; align-items: center; gap: 16px; padding: 0 14px; height: 34px; border-top: 1px solid var(--line); background: var(--surface); font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; }
   .mode { color: var(--text); }
   .keys { margin-left: auto; color: var(--dim); overflow: hidden; text-overflow: ellipsis; }

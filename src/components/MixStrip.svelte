@@ -9,10 +9,16 @@
   let selected = $derived(S.ui.selected === 'mix:' + mix.id);
   let dense = $derived(S.ui.density);
   let name = $derived(label(mix));
+  const ST = { off: 'Stream off', starting: 'Starting…', no_device: 'No stream device', error: 'Error' };
   let device = $derived(
     mix.id === 'A'
       ? (S.rt.live ? (S.rt.outputs.find((o) => o.is_default)?.name ?? 'Default output') : 'Default output')
-      : (S.rt.live ? 'Preview — needs virtual driver' : 'Virtual output'));
+      : (S.rt.live
+          ? (S.rt.stream.state === 'active' ? S.rt.stream.device
+            : S.rt.stream.state === 'fallback' ? 'Fallback: ' + S.rt.stream.device
+            : ST[S.rt.stream.state] ?? S.rt.stream.state)
+          : 'CABLE Input (demo)'));
+  let warn = $derived(mix.id === 'B' && S.rt.live && ['no_device', 'error', 'fallback'].includes(S.rt.stream.state));
 </script>
 
 <section class="strip" class:focused class:selected class:muted={mix.mute} class:compact={dense === 'compact'}
@@ -21,7 +27,7 @@
     <span class="sicon"><Icon name={mix.id} /></span>
     <span class="name">{name}</span>
   </button>
-  {#if dense !== 'compact'}<div class="dev" title={device}>{mix.name} · {device}</div>{/if}
+  {#if dense !== 'compact'}<div class="dev" class:warn title={S.rt.stream.error || device}>{mix.name} · {device}</div>{/if}
   <button class="focusbtn" aria-pressed={focused} onclick={() => (S.ui.focus = mix.id)}
     title="Show the sends to {name} on the source faders">
     {focused ? 'Sends shown' : 'Show sends'}
@@ -53,6 +59,7 @@
   .sicon { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; color: var(--c); background: color-mix(in srgb, var(--c) 18%, transparent); flex: none; }
   .compact .sicon { display: none; }
   .name { font-weight: 700; font-size: 12.5px; letter-spacing: .5px; text-transform: uppercase; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dev.warn { color: var(--warn); }
   .dev { margin: 0 10px; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .focusbtn { margin: 8px 10px 0; height: 28px; border-radius: 7px; font-size: 11.5px; font-weight: 700; border: 1px solid var(--line-2); color: var(--muted); }
   .focusbtn[aria-pressed="true"] { background: var(--c); color: #0d0f13; border-color: transparent; }

@@ -39,7 +39,8 @@ jobs:
             **Install:** download `Daelij.MiX_..._x64-setup.exe` below and run it.
             Windows may say "Windows protected your PC" because the app is not signed yet: click **More info → Run anyway**.
 
-            What works: Game / Chat / Media / Aux faders change the real volume of the apps on them, live meters per app, scenes, undo/redo.
-            Preview only: Mix B (stream) and the effects — these need a virtual audio driver that is not built yet.
+            What works: Game / Chat / Media / Aux faders change the real volume of the apps on them, live meters, scenes, undo/redo.
+            New in 0.2: Mix B (stream) is real. Install the free VB-Cable, then in OBS add Audio Input Capture → CABLE Output. Needs Windows 11.
+            Still a preview: the effects (EQ, compressor, gate, noise reduction).
           releaseDraft: false
           prerelease: true

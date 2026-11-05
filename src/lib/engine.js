@@ -1,6 +1,6 @@
 // Engine: meters (one rAF loop writing straight to the DOM), demo signal,
 // and — inside the Windows app — real per-app audio sessions via Tauri.
-import { S, dbToPos, lin, source, mixOf, assignedSource, appVol, appMuted } from './state.svelte.js';
+import { S, dbToPos, lin, source, mixOf, assignedSource, appVol, appMuted, isVirtual, save } from './state.svelte.js';
 
 export const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 let invoke = null;
@@ -70,6 +70,7 @@ async function startLive() {
       }
       S.rt.error = '';
       applyVolumes();
+      updateStream();
     } catch (e) {
       S.rt.error = String(e);
     }
@@ -82,8 +83,59 @@ const pretty = (n) => (n && n[0] === n[0].toLowerCase() ? n[0].toUpperCase() + n
 
 export async function refreshOutputs() {
   if (!invoke) return;
-  try { S.rt.outputs = await invoke('list_outputs'); } catch (e) { S.rt.error = String(e); }
+  try {
+    S.rt.outputs = await invoke('list_outputs');
+    // First run: use any virtual cable as the stream output.
+    if (!S.devices.stream.length) {
+      const v = S.rt.outputs.filter((o) => isVirtual(o.name)).map((o) => o.id);
+      if (v.length) { S.devices.stream = v; save(); }
+    }
+  } catch (e) { S.rt.error = String(e); }
 }
+
+/* ---------- Mix B (stream) ---------- */
+let streamPeak = [0, 0];
+let lastStreamKey = '', lastStreamSent = 0;
+/**
+ * Gain per app for Mix B = app volume × source send to B × Mix B fader.
+ * The capture hears the app after its Windows volume (set for Mix A), so that is divided out again.
+ */
+function streamGain(app) {
+  const srcId = assignedSource(app.name);
+  const s = source(srcId), send = S.mix.sends[srcId].B, b = mixOf('B');
+  const anySolo = S.mix.sources.some((x) => x.solo);
+  if (appMuted(app.name) || s.mute || !send.on || b.mute || (anySolo && !s.solo)) return 0;
+  const g = appVol(app.name) * lin(send.gain + b.gain);
+  const wv = written.get(app.pid) ?? 1;
+  return wv > 0.02 ? Math.min(16, g / wv) : 0;
+}
+async function updateStream() {
+  const present = new Set(S.rt.outputs.map((o) => o.id));
+  const params = {
+    enabled: !!S.settings.streamOn,
+    outputs: S.devices.stream.filter((id) => present.has(id)),
+    apps: S.rt.sessions.filter((a) => a.pid !== 0).map((a) => ({ pid: a.pid, gain: +streamGain(a).toFixed(4) })),
+  };
+  const key = JSON.stringify(params);
+  const now = performance.now();
+  if (key === lastStreamKey && now - lastStreamSent < 100) return;
+  lastStreamKey = key; lastStreamSent = now;
+  try {
+    const st = await invoke('stream_update', { params });
+    streamPeak = [Math.max(streamPeak[0], st.peak_l), Math.max(streamPeak[1], st.peak_r)];
+    const r = S.rt.stream;
+    if (r.state !== st.state) r.state = st.state;
+    if (r.device !== st.device) r.device = st.device;
+    if (r.device_id !== st.device_id) r.device_id = st.device_id;
+    if (r.captures !== st.captures) r.captures = st.captures;
+    if (st.error && r.error !== st.error) r.error = st.error;
+    if (!st.error && r.error && st.state === 'active') r.error = '';
+  } catch (e) {
+    S.rt.stream.state = 'error'; S.rt.stream.error = String(e);
+  }
+}
+/** Mix B is real when the engine is playing to a stream device. */
+export const streamLive = () => S.rt.live && (S.rt.stream.state === 'active' || S.rt.stream.state === 'fallback');
 
 /** Windows volume for an app = app volume × source send to Mix A × Mix A fader. */
 function targetVolume(name) {
@@ -153,6 +205,12 @@ function computeLevels(t) {
     }
   }
   for (const m of S.mix.mixes) {
+    if (m.id === 'B' && streamLive()) {
+      const d = (p) => (p > 0.00001 ? 20 * Math.log10(p) : -100);
+      lv.set('mix:B', [d(streamPeak[0]), d(streamPeak[1])]);
+      streamPeak = [0, 0];
+      continue;
+    }
     const g = m.mute ? -100 : m.gain;
     const L = dbAdd(into[m.id].map((v) => v[0])), R = dbAdd(into[m.id].map((v) => v[1]));
     lv.set('mix:' + m.id, [L > -100 ? L + g : -100, R > -100 ? R + g : -100]);

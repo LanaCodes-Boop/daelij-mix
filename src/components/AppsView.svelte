@@ -1,5 +1,5 @@
 <script>
-  import { S, label, assignedSource, assignApp, appVol, appMuted, save } from '../lib/state.svelte.js';
+  import { S, label, assignedSource, assignApp, appVol, appMuted, hasRule, save } from '../lib/state.svelte.js';
   import { currentApps, resetAppVolumes } from '../lib/engine.js';
   import Meter from './Meter.svelte';
   import Icon from './Icon.svelte';
@@ -36,6 +36,7 @@
             <span class="grip" aria-hidden="true"><Icon name="grip" size={14} /></span>
             <span class="glyph">{a.name[0]}</span>
             <span class="aname" title={a.name}>{a.name}</span>
+            {#if !hasRule(a.name)}<span class="auto" title="Placed automatically. Drag it or pick a bus to save a rule.">Auto</span>{/if}
             <button class="mute" aria-pressed={appMuted(a.name)} onclick={() => toggleMute(a.name)} aria-label="Mute {a.name}">M</button>
           </div>
           <Meter key={'app:' + a.name} color={s.color} label={a.name} horizontal channels={1} />
@@ -72,6 +73,7 @@
   .grip { color: var(--dim); }
   .glyph { width: 20px; height: 20px; border-radius: 5px; display: grid; place-items: center; background: var(--c); color: #0d0f13; font-weight: 800; font-size: 11px; flex: none; }
   .aname { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .auto { font-size: 9.5px; font-weight: 800; letter-spacing: .4px; color: var(--warn); border: 1px solid rgba(255,209,102,.4); border-radius: 4px; padding: 0 4px; }
   .mute { width: 26px; height: 24px; border-radius: 6px; font-weight: 800; font-size: 11px; border: 1px solid var(--line-2); color: var(--muted); }
   .mute[aria-pressed="true"] { background: rgba(255,93,93,.18); border-color: rgba(255,93,93,.6); color: #ff8a8a; }
   .row2 input { flex: 1; }

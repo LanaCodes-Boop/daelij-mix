@@ -92,11 +92,13 @@ export const S = $state({
     ],
   },
   apps: saved?.apps ?? { assign: {}, vol: {}, mute: {} },
-  devices: saved?.devices ?? { fallback: [] },
-  settings: saved?.settings ?? { sr: 48000, buf: 256 },
+  devices: { fallback: [], stream: [], ...(saved?.devices ?? {}) },
+  settings: { sr: 48000, buf: 256, streamOn: true, ...(saved?.settings ?? {}) },
   // runtime only (not saved)
   rt: {
     live: false, sessions: [], outputs: [], pollMs: 0, error: '',
+    stream: { state: 'off', device: '', device_id: '', captures: 0, error: '' },
+    toast: '', revision: 0,
     canUndo: false, canRedo: false, snap: '',
   },
 });
@@ -138,9 +140,10 @@ export function commit() {
   const now = JSON.stringify($state.snapshot(S.mix));
   if (now !== S.rt.snap) {
     undoStack.push(S.rt.snap);
-    if (undoStack.length > 200) undoStack.shift();
+    if (undoStack.length > 100) undoStack.shift(); // 100 actions, like Mixdeck
     redoStack.length = 0;
     S.rt.snap = now;
+    S.rt.revision++;
     refreshFlags();
   }
   save();
@@ -166,14 +169,78 @@ export function isDirty() {
   const sc = S.scenes.list.find((s) => s.name === S.scenes.current);
   return !sc || sc.data !== S.rt.snap;
 }
+/** Check a scene before applying it: every source and mix must be there with sane numbers. */
+export function validateMix(m) {
+  try {
+    const ok = (n) => typeof n === 'number' && Number.isFinite(n) && n >= -100 && n <= 12;
+    if (!m || !Array.isArray(m.sources) || !Array.isArray(m.mixes) || !m.sends) return 'Scene is damaged';
+    for (const id of ['game', 'chat', 'media', 'aux']) {
+      if (!m.sources.find((s) => s.id === id)) return `Scene is missing ${id}`;
+      for (const x of ['A', 'B']) {
+        const sd = m.sends[id]?.[x];
+        if (!sd || typeof sd.on !== 'boolean' || !ok(sd.gain)) return `Scene has a bad ${id} → ${x} send`;
+      }
+    }
+    for (const x of ['A', 'B']) { const mm = m.mixes.find((y) => y.id === x); if (!mm || !ok(mm.gain)) return `Scene has a bad Mix ${x}`; }
+    return '';
+  } catch { return 'Scene is damaged'; }
+}
+
+let ramp = null;
+/**
+ * Safe scene recall: validate first (nothing changes if invalid), switch routing,
+ * mutes and EQ at once, and glide all gains to the new values over 50 ms.
+ * The whole recall is one undo step.
+ */
 export function loadScene(name) {
   const sc = S.scenes.list.find((s) => s.name === name);
   if (!sc) return;
+  let target;
+  try { target = JSON.parse(sc.data); } catch { target = null; }
+  const problem = validateMix(target);
+  if (problem) { toast(`Scene "${name}" not loaded: ${problem}`); return; }
   commit();
+  if (ramp) clearTimeout(ramp.t);
+  // start values = what is on screen now (also mid-ramp)
+  const from = {
+    sends: Object.fromEntries(Object.entries(S.mix.sends).map(([k, v]) => [k, { A: v.A.gain, B: v.B.gain }])),
+    mixes: Object.fromEntries(S.mix.mixes.map((m) => [m.id, m.gain])),
+  };
+  const next = structuredClone(target);
+  for (const [k, v] of Object.entries(next.sends)) { v.A.gain = from.sends[k]?.A ?? v.A.gain; v.B.gain = from.sends[k]?.B ?? v.B.gain; }
+  for (const m of next.mixes) m.gain = from.mixes[m.id] ?? m.gain;
   S.scenes.current = name;
-  S.mix = JSON.parse(sc.data);
-  commit();
+  S.mix = next;
+  const t0 = performance.now(), DUR = 50;
+  const glide = (a, b, k) => { // interpolate in amplitude, not dB, so -∞ fades smoothly
+    const la = a <= -60 ? 0 : Math.pow(10, a / 20), lb = b <= -60 ? 0 : Math.pow(10, b / 20);
+    const l = la + (lb - la) * k;
+    return l <= 0.001 ? (k >= 1 ? b : -60) : 20 * Math.log10(l);
+  };
+  const step = (now) => {
+    const k = Math.min(1, (now - t0) / DUR);
+    for (const [id, v] of Object.entries(S.mix.sends)) {
+      v.A.gain = k >= 1 ? target.sends[id].A.gain : glide(from.sends[id]?.A ?? -100, target.sends[id].A.gain, k);
+      v.B.gain = k >= 1 ? target.sends[id].B.gain : glide(from.sends[id]?.B ?? -100, target.sends[id].B.gain, k);
+    }
+    for (const m of S.mix.mixes) {
+      const t = target.mixes.find((x) => x.id === m.id).gain;
+      m.gain = k >= 1 ? t : glide(from.mixes[m.id] ?? -100, t, k);
+    }
+    if (k < 1) ramp.t = setTimeout(() => step(performance.now()), 8);
+    else { ramp = null; commit(); }
+  };
+  // timers, not animation frames: those pause while the window is minimized
+  ramp = { t: setTimeout(() => step(performance.now()), 0) };
 }
+
+let toastT;
+export function toast(msg) {
+  S.rt.toast = msg;
+  clearTimeout(toastT);
+  toastT = setTimeout(() => (S.rt.toast = ''), 4000);
+}
+
 export function saveScene(name = S.scenes.current) {
   commit();
   const data = S.rt.snap;
@@ -222,3 +289,7 @@ export function assignApp(name, srcId) {
 }
 export const appVol = (name) => S.apps.vol[name.toLowerCase()] ?? 1;
 export const appMuted = (name) => !!S.apps.mute[name.toLowerCase()];
+export const hasRule = (name) => !!S.apps.assign[name.toLowerCase()];
+
+/** Looks like a virtual cable (good default for the stream output). */
+export const isVirtual = (name) => /cable|virtual|voicemeeter|vb-audio|stream|vaio|obs/i.test(name || '');
