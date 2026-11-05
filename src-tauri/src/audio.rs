@@ -23,6 +23,7 @@ mod imp {
     use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
     use windows::Win32::Foundation::CloseHandle;
     use windows::Win32::Media::Audio::*;
+    use windows::Win32::Media::Audio::Endpoints::IAudioMeterInformation;
     use windows::Win32::System::Com::*;
     use windows::Win32::System::Threading::*;
 
